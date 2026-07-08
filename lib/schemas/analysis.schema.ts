@@ -96,7 +96,7 @@ const FallenLegalTags = z.object({
    */
   company_name: z
     .string()
-    .optional()
+    .nullable()
     .describe('Specific company name if different from negligent party'),
 
   /**
@@ -145,7 +145,7 @@ const SparedLegalTags = z.object({
   agency_code: AgencyCodeEnum,
 
   /** Company or workplace where the near-miss / survival occurred (optional). */
-  company_name: z.string().optional(),
+  company_name: z.string().nullable(),
 
   /**
    * A compassionate 2-sentence summary of how a regulation saved or protected
