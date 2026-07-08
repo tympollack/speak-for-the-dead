@@ -20,7 +20,8 @@ export default function AuthGateButton() {
       router.push('/submit');
     } else {
       // NO session exists: Redirect to SunShade Hub login route
-      const hubUrl = process.env.NEXT_PUBLIC_SUNSHADE_HUB_URL || 'https://hub.sunshade.systems';
+      const rawHubUrl = process.env.NEXT_PUBLIC_SUNSHADE_HUB_URL || 'https://hub.sunshade.systems';
+      const hubUrl = rawHubUrl.replace(/\/+$/, ''); // Strip trailing slash if present
       const callbackUrl = encodeURIComponent(`${window.location.origin}/submit`);
       window.location.href = `${hubUrl}/auth?redirectTo=${callbackUrl}`;
     }
