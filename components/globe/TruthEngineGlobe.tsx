@@ -1,8 +1,9 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
+import { createClient } from '@/lib/supabase/client';
 import { OrbitControls } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import Link from 'next/link';
@@ -31,11 +32,7 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
     let fallen = 0;
     let spared = 0;
     for (const p of particles) {
-      if (
-        p.incident_outcome === 'FATALITY' ||
-        p.incident_outcome === 'INJURY' ||
-        p.incident_outcome === 'ILLNESS'
-      ) {
+      if (p.outcome_type === 0) {
         fallen++;
       } else {
         spared++;
@@ -43,6 +40,72 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
     }
     return { fallenCount: fallen, sparedCount: spared };
   }, [particles]);
+
+  /* ── Pre-fetched Pools & Session Locking ────────────────── */
+  const sessionLocks = useRef<Map<number, { id: string; pull_quote: string }>>(new Map());
+  const anchorPool = useRef<{ id: string; pull_quote: string }[]>([]);
+  const unverifiedPool = useRef<{ id: string; pull_quote: string }[]>([]);
+
+  useEffect(() => {
+    const fetchPool = async () => {
+      const supabase = createClient();
+      let query = supabase
+        .from('stories')
+        .select('id, pull_quote, verification_tier')
+        .eq('moderation_status', 'APPROVED')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (activeAgency) {
+        query = supabase
+          .from('stories')
+          .select('id, pull_quote, verification_tier, story_analysis_tags!inner(agency_code)')
+          .eq('moderation_status', 'APPROVED')
+          .eq('story_analysis_tags.agency_code', activeAgency)
+          .order('created_at', { ascending: false })
+          .limit(100);
+      }
+
+      const { data } = await query;
+      if (data) {
+        anchorPool.current = [];
+        unverifiedPool.current = [];
+        data.forEach(d => {
+          const item = { id: d.id, pull_quote: d.pull_quote || 'A story from Speak for the Dead.' };
+          if (d.verification_tier === 'ANCHOR') {
+            anchorPool.current.push(item);
+          } else {
+            unverifiedPool.current.push(item);
+          }
+        });
+      }
+    };
+    fetchPool();
+  }, [activeAgency]);
+
+  const handleParticleHover = useCallback((index: number, is_anchor: boolean) => {
+    // 1. Check if already session locked
+    if (sessionLocks.current.has(index)) {
+      setSelectedParticle(sessionLocks.current.get(index)!);
+      return;
+    }
+
+    // 2. Otherwise pop from pools
+    let nextStory = null;
+    if (is_anchor && anchorPool.current.length > 0) {
+      nextStory = anchorPool.current.shift();
+    } else if (unverifiedPool.current.length > 0) {
+      nextStory = unverifiedPool.current.shift();
+    } else if (anchorPool.current.length > 0) {
+      nextStory = anchorPool.current.shift();
+    }
+
+    // 3. Lock it permanently for this session
+    if (nextStory) {
+      sessionLocks.current.set(index, nextStory);
+      setSelectedParticle(nextStory);
+    }
+  }, []);
 
   return (
     <div style={wrapperStyle}>
@@ -73,7 +136,7 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
         <GlobeParticles
           particles={particles}
           activeAgency={activeAgency}
-          onParticleClick={setSelectedParticle}
+          onParticleHover={handleParticleHover}
         />
 
         {/* Camera controls */}

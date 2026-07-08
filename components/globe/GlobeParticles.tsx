@@ -6,18 +6,15 @@ import * as THREE from 'three';
 
 /* ── Types ──────────────────────────────────────────────────── */
 export interface GlobeParticle {
-  id: string;
-  incident_outcome: 'FATALITY' | 'INJURY' | 'ILLNESS' | 'NEAR_MISS' | 'SPARED';
+  outcome_type: 0 | 1;
   agency_codes: string[];
-  preventability_score: number;
-  pull_quote: string;
-  is_verified: boolean;
+  is_anchor: boolean;
 }
 
 interface GlobeParticlesProps {
   particles: GlobeParticle[];
   activeAgency: string | null;
-  onParticleClick: (particle: { id: string; pull_quote: string }) => void;
+  onParticleHover: (index: number, is_anchor: boolean) => void;
 }
 
 /* ── Seeded pseudo-random (mulberry32) ──────────────────────── */
@@ -45,21 +42,16 @@ function randomSpherePoint(rand: () => number): [number, number, number] {
 
 /* ── Color per outcome ──────────────────────────────────────── */
 function outcomeColor(
-  outcome: GlobeParticle['incident_outcome'],
-  isVerified: boolean
+  outcome_type: 0 | 1,
+  is_anchor: boolean
 ): [number, number, number] {
-  const boost = isVerified ? 1.15 : 1.0;
-  switch (outcome) {
-    case 'FATALITY':
-      return [1.0 * boost, 0.35 * boost, 0.15 * boost];
-    case 'INJURY':
-      return [1.0 * boost, 0.55 * boost, 0.2 * boost];
-    case 'ILLNESS':
-      return [0.9 * boost, 0.42 * boost, 0.22 * boost];
-    case 'NEAR_MISS':
-      return [0.3 * boost, 0.75 * boost, 0.94 * boost];
-    case 'SPARED':
-      return [0.2 * boost, 0.79 * boost, 0.94 * boost];
+  const boost = is_anchor ? 1.3 : 1.0;
+  if (outcome_type === 0) {
+    // Fallen (FATALITY/INJURY/ILLNESS) -> Warm Red/Orange
+    return [1.0 * boost, 0.45 * boost, 0.2 * boost];
+  } else {
+    // Spared (SPARED/NEAR_MISS) -> Cool Blue/Cyan
+    return [0.25 * boost, 0.77 * boost, 0.94 * boost];
   }
 }
 
@@ -67,7 +59,7 @@ function outcomeColor(
 export default function GlobeParticles({
   particles,
   activeAgency,
-  onParticleClick,
+  onParticleHover,
 }: GlobeParticlesProps) {
   const { raycaster, camera, size } = useThree();
   const pointsRef = useRef<THREE.Points>(null!);
@@ -122,7 +114,8 @@ export default function GlobeParticles({
   const colors = useMemo<Float32Array>(() => {
     const arr = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      const [r, g, b] = outcomeColor(particles[i].incident_outcome, particles[i].is_verified);
+      const p = particles[i];
+      const [r, g, b] = outcomeColor(p.outcome_type, p.is_anchor);
       arr[i * 3]     = Math.min(r, 1.0);
       arr[i * 3 + 1] = Math.min(g, 1.0);
       arr[i * 3 + 2] = Math.min(b, 1.0);
@@ -130,15 +123,12 @@ export default function GlobeParticles({
     return arr;
   }, [count, particles]);
 
-  /* ── Sizes (fatalities slightly larger) ──────────────────── */
+  /* ── Sizes ───────────────────────────────────────────────── */
   const sizes = useMemo<Float32Array>(() => {
     const arr = new Float32Array(count);
     for (let i = 0; i < count; i++) {
       const p = particles[i];
-      arr[i] =
-        p.incident_outcome === 'FATALITY' ? 0.045 :
-        p.is_verified ? 0.038 :
-        0.035;
+      arr[i] = p.is_anchor ? 0.045 : (p.outcome_type === 0 ? 0.038 : 0.032);
     }
     return arr;
   }, [count, particles]);
@@ -175,32 +165,49 @@ export default function GlobeParticles({
     }
   });
 
-  /* ── Click handling via raycaster ────────────────────────── */
-  const handleClick = useCallback(
-    (e: { nativeEvent: MouseEvent }) => {
+  /* ── Debounced Hover Handling ────────────────────────────── */
+  const hoverTimer = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+
+    const onPointerMove = (e: MouseEvent) => {
       if (!pointsRef.current) return;
-      const rect = (e.nativeEvent.target as HTMLElement).getBoundingClientRect();
-      const ndcX = ((e.nativeEvent.clientX - rect.left) / size.width) * 2 - 1;
-      const ndcY = -((e.nativeEvent.clientY - rect.top) / size.height) * 2 + 1;
+      const rect = canvas.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / size.width) * 2 - 1;
+      const ndcY = -((e.clientY - rect.top) / size.height) * 2 + 1;
+      
       raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
       const hits = raycaster.intersectObject(pointsRef.current);
+      
       if (hits.length > 0 && hits[0].index !== undefined) {
+        // Visual blip immediately (pointer cursor)
+        document.body.style.cursor = 'pointer';
         const idx = hits[0].index;
-        if (idx < particles.length) {
-          onParticleClick({
-            id: particles[idx].id,
-            pull_quote: particles[idx].pull_quote,
-          });
-        }
+        const isAnchor = particles[idx].is_anchor;
+
+        // Clear existing debounce
+        if (hoverTimer.current) clearTimeout(hoverTimer.current);
+
+        // Wait for mouse to settle
+        hoverTimer.current = setTimeout(() => {
+          onParticleHover(idx, isAnchor);
+        }, 200);
+      } else {
+        document.body.style.cursor = 'auto';
+        if (hoverTimer.current) clearTimeout(hoverTimer.current);
       }
-    },
-    [camera, onParticleClick, particles, raycaster, size]
-  );
+    };
+
+    canvas.addEventListener('pointermove', onPointerMove);
+    return () => canvas.removeEventListener('pointermove', onPointerMove);
+  }, [camera, onParticleHover, particles, raycaster, size]);
 
   if (count === 0) return null;
 
   return (
-    <points ref={pointsRef} onClick={handleClick}>
+    <points ref={pointsRef}>
       <bufferGeometry key={count}>
         <bufferAttribute
           attach="attributes-position"
