@@ -97,7 +97,7 @@ export default function GlobeParticles({
         const clusterRand = seededRandom(i * 99991 + 3);
         const radius = clusterRand() * 0.35;
         const theta = clusterRand() * Math.PI * 2;
-        const y = (clusterRand() - 0.5) * 3.0; // spanning -1.5 to 1.5
+        const y = (clusterRand() - 0.5) * 1.5; // spanning -0.75 to 0.75
 
         arr[i * 3]     = Math.cos(theta) * radius + 1.0;
         arr[i * 3 + 1] = y;
@@ -225,9 +225,9 @@ export default function GlobeParticles({
       const ndcX = ((e.clientX - rect.left) / size.width) * 2 - 1;
       const ndcY = -((e.clientY - rect.top) / size.height) * 2 + 1;
       
-      // Fix massive default threshold to avoid picking on empty space
+      // Fix massive default threshold to avoid picking on empty space, but keep it large enough to click easily
       if (raycaster.params.Points) {
-        raycaster.params.Points.threshold = 0.015;
+        raycaster.params.Points.threshold = 0.05;
       }
       
       raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
