@@ -121,7 +121,7 @@ export default function GlobeParticles({
         arr[i] = 1.0;
       } else {
         const matches = p.agency_codes.includes(activeAgency);
-        arr[i] = matches ? 1.0 : 0.1;
+        arr[i] = matches ? 1.0 : 0.0;
       }
     }
     return arr;
@@ -229,10 +229,19 @@ export default function GlobeParticles({
       const hits = raycaster.intersectObject(pointsRef.current);
       
       if (hits.length > 0 && hits[0].index !== undefined) {
+        const idx = hits[0].index;
+        const p = particles[idx];
+        
+        // Bail out if we are intersecting an invisible (inactive) dot
+        if (activeAgency && !p.agency_codes.includes(activeAgency)) {
+          document.body.style.cursor = 'auto';
+          if (hoverTimer.current) clearTimeout(hoverTimer.current);
+          return;
+        }
+
         // Visual blip immediately (pointer cursor)
         document.body.style.cursor = 'pointer';
-        const idx = hits[0].index;
-        const isAnchor = particles[idx].is_anchor;
+        const isAnchor = p.is_anchor;
 
         // Clear existing debounce
         if (hoverTimer.current) clearTimeout(hoverTimer.current);

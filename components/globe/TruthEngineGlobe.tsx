@@ -6,6 +6,8 @@ import { Canvas } from '@react-three/fiber';
 import { createClient } from '@/lib/supabase/client';
 import { OrbitControls } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 import Link from 'next/link';
 import GlobeControls from './GlobeControls';
 import type { GlobeParticle } from './GlobeParticles';
@@ -167,7 +169,7 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
         <pointLight position={[-5, -5, -5]} intensity={0.6} color="#4CC9F0" />
 
         {/* Globe wire-sphere */}
-        <GlobeWireSphere />
+        <GlobeWireSphere activeAgency={activeAgency} />
 
         {/* Particles */}
         <GlobeParticles
@@ -232,15 +234,28 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
 }
 
 /* ── Wire sphere (globe outline) ─────────────────────────────── */
-function GlobeWireSphere() {
+function GlobeWireSphere({ activeAgency }: { activeAgency: string | null }) {
+  const materialRef = useRef<THREE.MeshBasicMaterial>(null!);
+
+  useFrame(() => {
+    if (!materialRef.current) return;
+    const targetOpacity = activeAgency ? 0.12 : 0.0;
+    const currentOpacity = materialRef.current.opacity;
+    const delta = targetOpacity - currentOpacity;
+    if (Math.abs(delta) > 0.001) {
+      materialRef.current.opacity += delta * 0.05;
+    }
+  });
+
   return (
     <mesh>
       <sphereGeometry args={[1, 36, 36]} />
       <meshBasicMaterial
+        ref={materialRef}
         color="#1a1a2e"
         wireframe
         transparent
-        opacity={0.12}
+        opacity={0.0}
       />
     </mesh>
   );
