@@ -6,18 +6,15 @@ import * as THREE from 'three';
 
 /* ── Types ──────────────────────────────────────────────────── */
 export interface GlobeParticle {
-  id: string;
-  incident_outcome: 'FATALITY' | 'INJURY' | 'ILLNESS' | 'NEAR_MISS' | 'SPARED';
+  outcome_type: 0 | 1;
   agency_codes: string[];
-  preventability_score: number;
-  pull_quote: string;
-  is_verified: boolean;
+  is_anchor: boolean;
 }
 
 interface GlobeParticlesProps {
   particles: GlobeParticle[];
   activeAgency: string | null;
-  onParticleClick: (particle: { id: string; pull_quote: string }) => void;
+  onParticleHover: (index: number, is_anchor: boolean) => void;
 }
 
 /* ── Seeded pseudo-random (mulberry32) ──────────────────────── */
@@ -45,21 +42,16 @@ function randomSpherePoint(rand: () => number): [number, number, number] {
 
 /* ── Color per outcome ──────────────────────────────────────── */
 function outcomeColor(
-  outcome: GlobeParticle['incident_outcome'],
-  isVerified: boolean
+  outcome_type: 0 | 1,
+  is_anchor: boolean
 ): [number, number, number] {
-  const boost = isVerified ? 1.15 : 1.0;
-  switch (outcome) {
-    case 'FATALITY':
-      return [1.0 * boost, 0.35 * boost, 0.15 * boost];
-    case 'INJURY':
-      return [1.0 * boost, 0.55 * boost, 0.2 * boost];
-    case 'ILLNESS':
-      return [0.9 * boost, 0.42 * boost, 0.22 * boost];
-    case 'NEAR_MISS':
-      return [0.3 * boost, 0.75 * boost, 0.94 * boost];
-    case 'SPARED':
-      return [0.2 * boost, 0.79 * boost, 0.94 * boost];
+  const boost = is_anchor ? 1.3 : 1.0;
+  if (outcome_type === 0) {
+    // Fallen (FATALITY/INJURY/ILLNESS) -> Warm Red/Orange
+    return [1.0 * boost, 0.45 * boost, 0.2 * boost];
+  } else {
+    // Spared (SPARED/NEAR_MISS) -> Cool Blue/Cyan
+    return [0.25 * boost, 0.77 * boost, 0.94 * boost];
   }
 }
 
@@ -67,7 +59,7 @@ function outcomeColor(
 export default function GlobeParticles({
   particles,
   activeAgency,
-  onParticleClick,
+  onParticleHover,
 }: GlobeParticlesProps) {
   const { raycaster, camera, size } = useThree();
   const pointsRef = useRef<THREE.Points>(null!);
@@ -101,44 +93,61 @@ export default function GlobeParticles({
       const [bx, by, bz] = randomSpherePoint(rand);
 
       if (matches) {
-        // Cluster into front hemisphere, tight sphere sector
+        // Column layout: shift right
         const clusterRand = seededRandom(i * 99991 + 3);
-        const theta = (clusterRand() - 0.5) * Math.PI * 0.6;
-        const phi = clusterRand() * Math.PI * 0.5;
-        arr[i * 3]     = Math.sin(phi) * Math.cos(theta) * 0.92;
-        arr[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * 0.92;
-        arr[i * 3 + 2] = Math.abs(Math.cos(phi)) * 0.92 + 0.08;
+        const radius = clusterRand() * 0.35;
+        const theta = clusterRand() * Math.PI * 2;
+        const y = (clusterRand() - 0.5) * 1.5; // spanning -0.75 to 0.75
+
+        arr[i * 3]     = Math.cos(theta) * radius + 1.0;
+        arr[i * 3 + 1] = y;
+        arr[i * 3 + 2] = Math.sin(theta) * radius;
       } else {
-        // Push non-matching to back hemisphere
-        arr[i * 3]     = bx;
-        arr[i * 3 + 1] = by;
-        arr[i * 3 + 2] = -Math.abs(bz) - 0.05;
+        // Globe layout: shift left (keep normal size, don't expand too much if side-by-side)
+        arr[i * 3]     = bx * 0.85 - 1.0;
+        arr[i * 3 + 1] = by * 0.85;
+        arr[i * 3 + 2] = bz * 0.85;
       }
     }
     return arr;
   }, [activeAgency, count, particles, scatteredPositions]);
 
+  /* ── Target Opacities ────────────────────────────────────── */
+  const targetOpacities = useMemo<Float32Array>(() => {
+    const arr = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const p = particles[i];
+      if (!activeAgency) {
+        arr[i] = 1.0;
+      } else {
+        const matches = p.agency_codes.includes(activeAgency);
+        arr[i] = matches ? 1.0 : 0.1;
+      }
+    }
+    return arr;
+  }, [activeAgency, count, particles]);
+
   /* ── Colors ─────────────────────────────────────────────── */
   const colors = useMemo<Float32Array>(() => {
-    const arr = new Float32Array(count * 3);
+    // We use an RGBA buffer (4 values per particle)
+    const arr = new Float32Array(count * 4);
     for (let i = 0; i < count; i++) {
-      const [r, g, b] = outcomeColor(particles[i].incident_outcome, particles[i].is_verified);
-      arr[i * 3]     = Math.min(r, 1.0);
-      arr[i * 3 + 1] = Math.min(g, 1.0);
-      arr[i * 3 + 2] = Math.min(b, 1.0);
+      const p = particles[i];
+      const [r, g, b] = outcomeColor(p.outcome_type, p.is_anchor);
+      arr[i * 4]     = Math.min(r, 1.0);
+      arr[i * 4 + 1] = Math.min(g, 1.0);
+      arr[i * 4 + 2] = Math.min(b, 1.0);
+      arr[i * 4 + 3] = 1.0; // Initial alpha
     }
     return arr;
   }, [count, particles]);
 
-  /* ── Sizes (fatalities slightly larger) ──────────────────── */
+  /* ── Sizes ───────────────────────────────────────────────── */
   const sizes = useMemo<Float32Array>(() => {
     const arr = new Float32Array(count);
     for (let i = 0; i < count; i++) {
       const p = particles[i];
-      arr[i] =
-        p.incident_outcome === 'FATALITY' ? 0.045 :
-        p.is_verified ? 0.038 :
-        0.035;
+      arr[i] = p.is_anchor ? 0.045 : (p.outcome_type === 0 ? 0.038 : 0.032);
     }
     return arr;
   }, [count, particles]);
@@ -151,56 +160,115 @@ export default function GlobeParticles({
     targetRef.current = clusteredPositions;
   }, [clusteredPositions, count, scatteredPositions]);
 
-  /* ── Animation loop: lerp toward target ─────────────────── */
+  /* ── Animation loop: lerp toward target positions and opacities ─── */
   useFrame(() => {
     if (!pointsRef.current) return;
-    const cur = positionsRef.current;
-    const tgt = targetRef.current;
-    if (!cur || !tgt || cur.length !== tgt.length) return;
-
-    let dirty = false;
-    for (let i = 0; i < cur.length; i++) {
-      const delta = tgt[i] - cur[i];
-      if (Math.abs(delta) > 0.0001) {
-        cur[i] += delta * 0.05;
-        dirty = true;
+    const curPos = positionsRef.current;
+    const tgtPos = targetRef.current;
+    const geo = pointsRef.current.geometry as THREE.BufferGeometry;
+    
+    // Lerp positions
+    let posDirty = false;
+    if (curPos && tgtPos && curPos.length === tgtPos.length) {
+      for (let i = 0; i < curPos.length; i++) {
+        const delta = tgtPos[i] - curPos[i];
+        if (Math.abs(delta) > 0.0001) {
+          curPos[i] += delta * 0.05;
+          posDirty = true;
+        }
+      }
+      if (posDirty) {
+        const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
+        posAttr.set(curPos);
+        posAttr.needsUpdate = true;
+        geo.computeBoundingSphere();
       }
     }
 
-    if (dirty) {
-      const geo = pointsRef.current.geometry as THREE.BufferGeometry;
-      const attr = geo.getAttribute('position') as THREE.BufferAttribute;
-      attr.set(cur);
-      attr.needsUpdate = true;
+    // Lerp opacities
+    let colorDirty = false;
+    const colorAttr = geo.getAttribute('color') as THREE.BufferAttribute;
+    const curColors = colorAttr.array as Float32Array;
+    if (curColors && curColors.length === count * 4) {
+      for (let i = 0; i < count; i++) {
+        const curAlpha = curColors[i * 4 + 3];
+        const tgtAlpha = targetOpacities[i];
+        const deltaAlpha = tgtAlpha - curAlpha;
+        
+        if (Math.abs(deltaAlpha) > 0.001) {
+          curColors[i * 4 + 3] += deltaAlpha * 0.05;
+          colorDirty = true;
+        }
+      }
+      if (colorDirty) {
+        colorAttr.needsUpdate = true;
+      }
     }
   });
 
-  /* ── Click handling via raycaster ────────────────────────── */
-  const handleClick = useCallback(
-    (e: { nativeEvent: MouseEvent }) => {
+  /* ── Debounced Hover Handling ────────────────────────────── */
+  const hoverTimer = useRef<NodeJS.Timeout | null>(null);
+  const lastRaycast = useRef<number>(0);
+
+  useEffect(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+
+    const onPointerMove = (e: MouseEvent) => {
+      // Throttle raycaster to max once every 100ms
+      const now = performance.now();
+      if (now - lastRaycast.current < 100) return;
+      lastRaycast.current = now;
+
       if (!pointsRef.current) return;
-      const rect = (e.nativeEvent.target as HTMLElement).getBoundingClientRect();
-      const ndcX = ((e.nativeEvent.clientX - rect.left) / size.width) * 2 - 1;
-      const ndcY = -((e.nativeEvent.clientY - rect.top) / size.height) * 2 + 1;
+      const rect = canvas.getBoundingClientRect();
+      const ndcX = ((e.clientX - rect.left) / size.width) * 2 - 1;
+      const ndcY = -((e.clientY - rect.top) / size.height) * 2 + 1;
+      
+      // Fix massive default threshold to avoid picking on empty space, but keep it large enough to click easily
+      if (raycaster.params.Points) {
+        raycaster.params.Points.threshold = 0.05;
+      }
+      
       raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
       const hits = raycaster.intersectObject(pointsRef.current);
+      
       if (hits.length > 0 && hits[0].index !== undefined) {
         const idx = hits[0].index;
-        if (idx < particles.length) {
-          onParticleClick({
-            id: particles[idx].id,
-            pull_quote: particles[idx].pull_quote,
-          });
+        const p = particles[idx];
+        
+        // Bail out if we are intersecting an invisible (inactive) dot
+        if (activeAgency && !p.agency_codes.includes(activeAgency)) {
+          document.body.style.cursor = 'auto';
+          if (hoverTimer.current) clearTimeout(hoverTimer.current);
+          return;
         }
+
+        // Visual blip immediately (pointer cursor)
+        document.body.style.cursor = 'pointer';
+        const isAnchor = p.is_anchor;
+
+        // Clear existing debounce
+        if (hoverTimer.current) clearTimeout(hoverTimer.current);
+
+        // Wait for mouse to settle
+        hoverTimer.current = setTimeout(() => {
+          onParticleHover(idx, isAnchor);
+        }, 200);
+      } else {
+        document.body.style.cursor = 'auto';
+        if (hoverTimer.current) clearTimeout(hoverTimer.current);
       }
-    },
-    [camera, onParticleClick, particles, raycaster, size]
-  );
+    };
+
+    canvas.addEventListener('pointermove', onPointerMove);
+    return () => canvas.removeEventListener('pointermove', onPointerMove);
+  }, [camera, onParticleHover, particles, raycaster, size]);
 
   if (count === 0) return null;
 
   return (
-    <points ref={pointsRef} onClick={handleClick}>
+    <points ref={pointsRef}>
       <bufferGeometry key={count}>
         <bufferAttribute
           attach="attributes-position"
@@ -208,7 +276,7 @@ export default function GlobeParticles({
         />
         <bufferAttribute
           attach="attributes-color"
-          args={[colors, 3]}
+          args={[colors, 4]}
         />
         <bufferAttribute
           attach="attributes-size"
@@ -220,7 +288,6 @@ export default function GlobeParticles({
         size={0.035}
         sizeAttenuation
         transparent
-        opacity={1.0}
         depthWrite={false}
         blending={THREE.AdditiveBlending}
       />

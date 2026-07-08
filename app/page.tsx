@@ -16,7 +16,7 @@ export default async function HomePage() {
   
   // 1. Get total count first to know how many pages to fetch
   const { count } = await supabase
-    .from('globe_particles')
+    .from('globe_skeleton')
     .select('*', { count: 'exact', head: true });
 
   let particles: any[] = [];
@@ -31,8 +31,8 @@ export default async function HomePage() {
     for (let i = 0; i < pages; i++) {
       promises.push(
         supabase
-          .from('globe_particles')
-          .select('id, incident_outcome, pull_quote, preventability_score, verification_tier, agency_codes')
+          .from('globe_skeleton')
+          .select('outcome_type, is_anchor, agency_codes')
           .range(i * pageSize, (i + 1) * pageSize - 1)
       );
     }
@@ -48,8 +48,8 @@ export default async function HomePage() {
       {/* Full-viewport globe — map DB verification_tier to the boolean GlobeParticle expects */}
       <div style={{ position: 'fixed', inset: 0, zIndex: 0 }}>
         <GlobeSection particles={(particles ?? []).map((p) => ({
-          ...p,
-          is_verified: p.verification_tier === 'ANCHOR',
+          outcome_type: p.outcome_type,
+          is_anchor: !!p.is_anchor,
           agency_codes: Array.isArray(p.agency_codes) ? p.agency_codes : [],
         }))} />
       </div>
