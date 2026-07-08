@@ -20,9 +20,9 @@ export default function GlobeLoader() {
           animation: 'globe-spin 1s linear infinite',
           margin: '0 auto 16px',
         }} />
-        <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.8rem', letterSpacing: '0.1em', margin: 0 }}>
-          LOADING TRUTH ENGINE
-        </p>
+        <div style={{ color: 'var(--color-warm-primary)', letterSpacing: '0.15em', fontSize: '0.8rem', fontWeight: 600 }}>
+          LOADING
+        </div>
       </div>
       <style>{`@keyframes globe-spin { to { transform: rotate(360deg); } }`}</style>
     </div>

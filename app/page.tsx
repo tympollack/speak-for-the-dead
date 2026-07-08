@@ -4,9 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import GlobeSection from '@/components/globe/GlobeSection';
 
 export const metadata: Metadata = {
-  title: 'Truth Engine | Speak for the Dead',
+  title: 'Speak for the Dead',
   description:
-    'Every dot is a life. Every cluster is a systemic failure. The human cost of regulatory rollback, in real time.',
+    'Every story is an evidence point. Every cluster is a systemic failure. The human cost of regulatory rollback, in real time.',
 };
 
 

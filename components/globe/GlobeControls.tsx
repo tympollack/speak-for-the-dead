@@ -53,7 +53,7 @@ export default function GlobeControls({
       <div style={topBarStyle} className="glass">
         {/* Left: branding + counter */}
         <div style={leftGroupStyle}>
-          <span style={labelStyle}>TRUTH ENGINE</span>
+          <span style={labelStyle}>SPEAK FOR THE DEAD</span>
           <div style={counterRowStyle}>
             <span style={fallenCountStyle}>
               {animFallen.toLocaleString()} Fallen

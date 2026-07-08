@@ -42,7 +42,7 @@ type Action =
   | { type: 'CLEAR_ERROR' };
 
 const initialState: FormState = {
-  step: 'TOGGLE',
+  step: 'NARRATIVE',
   storyType: 'IN_MEMORIAM',
   narrative: '',
   followUpAnswers: {},
@@ -84,7 +84,7 @@ function reducer(state: FormState, action: Action): FormState {
     case 'SUBMIT_ERROR':
       return { ...state, isSubmitting: false, error: action.payload };
     case 'NEXT_STEP': {
-      const order: Step[] = ['TOGGLE', 'NARRATIVE', 'ANALYZING', 'GUIDE', 'UPLOAD', 'CONFIRM', 'SUCCESS'];
+      const order: Step[] = ['NARRATIVE', 'ANALYZING', 'GUIDE', 'UPLOAD', 'CONFIRM', 'SUCCESS'];
       const currentIdx = order.indexOf(state.step);
       const next = order[currentIdx + 1] ?? state.step;
       return { ...state, step: next };
@@ -304,25 +304,19 @@ export default function IntakeForm() {
       <div style={{ width: '100%', maxWidth: '680px' }}>
         <AnimatePresence mode="wait">
 
-          {state.step === 'TOGGLE' && (
-            <motion.div key="toggle" variants={pageVariants} initial="initial" animate="animate" exit="exit">
+          {state.step === 'NARRATIVE' && (
+            <motion.div key="narrative" variants={pageVariants} initial="initial" animate="animate" exit="exit">
               <h1 style={{ textAlign: 'center', fontSize: '1.75rem', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>
                 Speak for the Dead
               </h1>
-              <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', marginBottom: '40px' }}>
-                Every story is a data point. Every data point is evidence.
+              <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', marginBottom: '32px' }}>
+                Every story is an evidence point.
               </p>
-              <SoftToggle value={state.storyType} onChange={(v) => dispatch({ type: 'SET_STORY_TYPE', payload: v })} />
-              <div style={{ textAlign: 'center', marginTop: '32px' }}>
-                <button className="btn-primary" onClick={() => dispatch({ type: 'NEXT_STEP' })} style={{ minWidth: '180px' }}>
-                  Begin
-                </button>
+              
+              <div style={{ marginBottom: '40px' }}>
+                <SoftToggle value={state.storyType} onChange={(v) => dispatch({ type: 'SET_STORY_TYPE', payload: v })} />
               </div>
-            </motion.div>
-          )}
 
-          {state.step === 'NARRATIVE' && (
-            <motion.div key="narrative" variants={pageVariants} initial="initial" animate="animate" exit="exit">
               <NarrativeStep
                 storyType={state.storyType}
                 value={state.narrative}
@@ -407,10 +401,10 @@ export default function IntakeForm() {
                 fontSize: '1.8rem', fontWeight: 500,
                 color: 'var(--color-text-primary)', marginBottom: '16px',
               }}>
-                Their story is now part of the Truth Engine.
+                Their story has been recorded.
               </h2>
               <p style={{ color: 'var(--color-text-secondary)', marginBottom: '32px', lineHeight: 1.7 }}>
-                It joins thousands of others — a single point of light in the swarm, impossible to ignore.
+                It joins thousands of others — a single point of light, impossible to ignore.
               </p>
               {state.submittedStoryId && (
                 <a href={`/story/${state.submittedStoryId}`} style={{
