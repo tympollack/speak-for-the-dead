@@ -45,46 +45,62 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
   const sessionLocks = useRef<Map<number, { id: string; pull_quote: string }>>(new Map());
   const anchorPool = useRef<{ id: string; pull_quote: string }[]>([]);
   const unverifiedPool = useRef<{ id: string; pull_quote: string }[]>([]);
+  
+  const pageOffset = useRef<number>(0);
+  const isFetching = useRef<boolean>(false);
 
-  useEffect(() => {
-    const fetchPool = async () => {
-      const supabase = createClient();
-      let fetchedData: any[] | null = null;
+  const fetchPool = useCallback(async (isRefill = false) => {
+    if (isFetching.current) return;
+    isFetching.current = true;
+    
+    if (!isRefill) {
+      pageOffset.current = 0;
+      anchorPool.current = [];
+      unverifiedPool.current = [];
+    }
 
-      if (activeAgency) {
-        const { data } = await supabase
-          .from('stories')
-          .select('id, pull_quote, verification_tier, story_analysis_tags!inner(agency_code)')
-          .eq('moderation_status', 'APPROVED')
-          .eq('story_analysis_tags.agency_code', activeAgency)
-          .order('created_at', { ascending: false })
-          .limit(100);
-        fetchedData = data;
-      } else {
-        const { data } = await supabase
-          .from('stories')
-          .select('id, pull_quote, verification_tier')
-          .eq('moderation_status', 'APPROVED')
-          .order('created_at', { ascending: false })
-          .limit(100);
-        fetchedData = data;
-      }
+    const supabase = createClient();
+    let fetchedData: any[] | null = null;
+    const offset = pageOffset.current * 100;
 
-      if (fetchedData) {
-        anchorPool.current = [];
-        unverifiedPool.current = [];
-        fetchedData.forEach(d => {
-          const item = { id: d.id, pull_quote: d.pull_quote || 'A story from Speak for the Dead.' };
-          if (d.verification_tier === 'ANCHOR') {
-            anchorPool.current.push(item);
-          } else {
-            unverifiedPool.current.push(item);
-          }
-        });
-      }
-    };
-    fetchPool();
+    if (activeAgency) {
+      const { data } = await supabase
+        .from('stories')
+        .select('id, pull_quote, verification_tier, story_analysis_tags!inner(agency_code)')
+        .eq('moderation_status', 'APPROVED')
+        .eq('story_analysis_tags.agency_code', activeAgency)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + 99);
+      fetchedData = data;
+    } else {
+      const { data } = await supabase
+        .from('stories')
+        .select('id, pull_quote, verification_tier')
+        .eq('moderation_status', 'APPROVED')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + 99);
+      fetchedData = data;
+    }
+
+    if (fetchedData && fetchedData.length > 0) {
+      pageOffset.current += 1;
+      fetchedData.forEach(d => {
+        const item = { id: d.id, pull_quote: d.pull_quote || 'A story from Speak for the Dead.' };
+        if (d.verification_tier === 'ANCHOR') {
+          anchorPool.current.push(item);
+        } else {
+          unverifiedPool.current.push(item);
+        }
+      });
+    }
+    
+    isFetching.current = false;
   }, [activeAgency]);
+
+  // Load initial chunks on mount or agency filter change
+  useEffect(() => {
+    fetchPool(false);
+  }, [fetchPool]);
 
   const handleParticleHover = useCallback((index: number, is_anchor: boolean) => {
     // 1. Check if already session locked
@@ -93,14 +109,14 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
       return;
     }
 
-    // 2. Otherwise pop from pools
+    // 2. Otherwise pop from pools (zero network calls)
     let nextStory = null;
     if (is_anchor && anchorPool.current.length > 0) {
-      nextStory = anchorPool.current.shift();
+      nextStory = anchorPool.current.pop();
     } else if (unverifiedPool.current.length > 0) {
-      nextStory = unverifiedPool.current.shift();
+      nextStory = unverifiedPool.current.pop();
     } else if (anchorPool.current.length > 0) {
-      nextStory = anchorPool.current.shift();
+      nextStory = anchorPool.current.pop();
     }
 
     // 3. Lock it permanently for this session
@@ -108,7 +124,12 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
       sessionLocks.current.set(index, nextStory);
       setSelectedParticle(nextStory);
     }
-  }, []);
+
+    // 4. Refill trigger
+    if (unverifiedPool.current.length < 15) {
+      fetchPool(true);
+    }
+  }, [fetchPool]);
 
   return (
     <div style={wrapperStyle}>
@@ -125,7 +146,7 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
         camera={{ position: [0, 0, 3], fov: 60 }}
         gl={{ antialias: true, alpha: true }}
         style={{ background: 'transparent', width: '100%', height: '100%' }}
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
       >
         {/* Lighting */}
         <ambientLight intensity={0.4} />
@@ -159,6 +180,7 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
             luminanceThreshold={0.05}
             luminanceSmoothing={0.9}
             intensity={2.5}
+            resolutionScale={0.5}
           />
         </EffectComposer>
       </Canvas>

@@ -162,17 +162,24 @@ export default function GlobeParticles({
       const attr = geo.getAttribute('position') as THREE.BufferAttribute;
       attr.set(cur);
       attr.needsUpdate = true;
+      geo.computeBoundingSphere();
     }
   });
 
   /* ── Debounced Hover Handling ────────────────────────────── */
   const hoverTimer = useRef<NodeJS.Timeout | null>(null);
+  const lastRaycast = useRef<number>(0);
 
   useEffect(() => {
     const canvas = document.querySelector('canvas');
     if (!canvas) return;
 
     const onPointerMove = (e: MouseEvent) => {
+      // Throttle raycaster to max once every 100ms
+      const now = performance.now();
+      if (now - lastRaycast.current < 100) return;
+      lastRaycast.current = now;
+
       if (!pointsRef.current) return;
       const rect = canvas.getBoundingClientRect();
       const ndcX = ((e.clientX - rect.left) / size.width) * 2 - 1;
