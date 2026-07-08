@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import GlobeSection from '@/components/globe/GlobeSection';
+import AuthGateButton from '@/components/AuthGateButton';
 
 export const metadata: Metadata = {
   title: 'Speak for the Dead',
@@ -89,10 +90,8 @@ export default async function HomePage() {
         transform: 'translateX(-50%)',
         zIndex: 10, textAlign: 'center',
       }}>
-        {/* CTA button — hover via CSS class defined in globals.css */}
-        <Link href="/submit" className="cta-btn">
-          Add Your Story
-        </Link>
+        {/* CTA button — handles SunShade Hub auth handoff */}
+        <AuthGateButton />
         <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', marginTop: '10px', letterSpacing: '0.05em' }}>
           Anonymous &middot; Zero friction &middot; One minute
         </p>
