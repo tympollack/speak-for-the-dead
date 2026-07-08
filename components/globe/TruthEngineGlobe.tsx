@@ -90,9 +90,9 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
         {/* Post-processing */}
         <EffectComposer>
           <Bloom
-            luminanceThreshold={0.18}
+            luminanceThreshold={0.05}
             luminanceSmoothing={0.9}
-            intensity={0.9}
+            intensity={2.5}
           />
         </EffectComposer>
       </Canvas>

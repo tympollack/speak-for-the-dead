@@ -82,9 +82,9 @@ export default function GlobeParticles({
     for (let i = 0; i < count; i++) {
       const rand = seededRandom(i * 31337 + 7);
       const [x, y, z] = randomSpherePoint(rand);
-      arr[i * 3]     = x;
-      arr[i * 3 + 1] = y;
-      arr[i * 3 + 2] = z;
+      arr[i * 3]     = x * 0.85;
+      arr[i * 3 + 1] = y * 0.85;
+      arr[i * 3 + 2] = z * 0.85;
     }
     return arr;
   }, [count]);
@@ -136,9 +136,9 @@ export default function GlobeParticles({
     for (let i = 0; i < count; i++) {
       const p = particles[i];
       arr[i] =
-        p.incident_outcome === 'FATALITY' ? 0.022 :
-        p.is_verified ? 0.018 :
-        0.015;
+        p.incident_outcome === 'FATALITY' ? 0.045 :
+        p.is_verified ? 0.038 :
+        0.035;
     }
     return arr;
   }, [count, particles]);
@@ -201,7 +201,7 @@ export default function GlobeParticles({
 
   return (
     <points ref={pointsRef} onClick={handleClick}>
-      <bufferGeometry>
+      <bufferGeometry key={count}>
         <bufferAttribute
           attach="attributes-position"
           args={[positionsRef.current.length > 0 ? positionsRef.current : scatteredPositions, 3]}
@@ -217,10 +217,10 @@ export default function GlobeParticles({
       </bufferGeometry>
       <pointsMaterial
         vertexColors
-        size={0.015}
+        size={0.035}
         sizeAttenuation
         transparent
-        opacity={0.88}
+        opacity={1.0}
         depthWrite={false}
         blending={THREE.AdditiveBlending}
       />

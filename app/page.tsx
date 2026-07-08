@@ -13,10 +13,35 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   const supabase = await createClient();
-  const { data: particles } = await supabase
+  
+  // 1. Get total count first to know how many pages to fetch
+  const { count } = await supabase
     .from('globe_particles')
-    .select('id, incident_outcome, pull_quote, preventability_score, verification_tier, agency_codes')
-    .limit(2000);
+    .select('*', { count: 'exact', head: true });
+
+  let particles: any[] = [];
+  
+  if (count && count > 0) {
+    const pageSize = 1000;
+    // Cap at 10,000 particles (10 pages) for safety
+    const pages = Math.min(Math.ceil(count / pageSize), 10);
+    const promises = [];
+    
+    // 2. Fetch all pages in parallel to keep page load lightning fast
+    for (let i = 0; i < pages; i++) {
+      promises.push(
+        supabase
+          .from('globe_particles')
+          .select('id, incident_outcome, pull_quote, preventability_score, verification_tier, agency_codes')
+          .range(i * pageSize, (i + 1) * pageSize - 1)
+      );
+    }
+    
+    const results = await Promise.all(promises);
+    results.forEach((res) => {
+      if (res.data) particles = particles.concat(res.data);
+    });
+  }
 
   return (
     <>
