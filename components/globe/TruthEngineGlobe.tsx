@@ -235,20 +235,33 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
 
 /* ── Wire sphere (globe outline) ─────────────────────────────── */
 function GlobeWireSphere({ activeAgency }: { activeAgency: string | null }) {
+  const meshRef = useRef<THREE.Mesh>(null!);
   const materialRef = useRef<THREE.MeshBasicMaterial>(null!);
 
   useFrame(() => {
-    if (!materialRef.current) return;
-    const targetOpacity = activeAgency ? 0.12 : 0.0;
-    const currentOpacity = materialRef.current.opacity;
-    const delta = targetOpacity - currentOpacity;
-    if (Math.abs(delta) > 0.001) {
-      materialRef.current.opacity += delta * 0.05;
+    // Lerp opacity
+    if (materialRef.current) {
+      const targetOpacity = activeAgency ? 0.12 : 0.0;
+      const currentOpacity = materialRef.current.opacity;
+      const deltaO = targetOpacity - currentOpacity;
+      if (Math.abs(deltaO) > 0.001) {
+        materialRef.current.opacity += deltaO * 0.05;
+      }
+    }
+    
+    // Lerp position side-by-side
+    if (meshRef.current) {
+      const targetX = activeAgency ? -1.0 : 0;
+      const currentX = meshRef.current.position.x;
+      const deltaX = targetX - currentX;
+      if (Math.abs(deltaX) > 0.001) {
+        meshRef.current.position.x += deltaX * 0.05;
+      }
     }
   });
 
   return (
-    <mesh>
+    <mesh ref={meshRef}>
       <sphereGeometry args={[1, 36, 36]} />
       <meshBasicMaterial
         ref={materialRef}

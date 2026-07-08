@@ -93,20 +93,20 @@ export default function GlobeParticles({
       const [bx, by, bz] = randomSpherePoint(rand);
 
       if (matches) {
-        // Squatter column layout in center
+        // Column layout: shift right
         const clusterRand = seededRandom(i * 99991 + 3);
         const radius = clusterRand() * 0.35;
         const theta = clusterRand() * Math.PI * 2;
         const y = (clusterRand() - 0.5) * 3.0; // spanning -1.5 to 1.5
 
-        arr[i * 3]     = Math.cos(theta) * radius;
+        arr[i * 3]     = Math.cos(theta) * radius + 1.0;
         arr[i * 3 + 1] = y;
         arr[i * 3 + 2] = Math.sin(theta) * radius;
       } else {
-        // Expand inactive to background
-        arr[i * 3]     = bx * 1.4;
-        arr[i * 3 + 1] = by * 1.4;
-        arr[i * 3 + 2] = bz * 1.4;
+        // Globe layout: shift left (keep normal size, don't expand too much if side-by-side)
+        arr[i * 3]     = bx * 0.85 - 1.0;
+        arr[i * 3 + 1] = by * 0.85;
+        arr[i * 3 + 2] = bz * 0.85;
       }
     }
     return arr;
@@ -121,7 +121,7 @@ export default function GlobeParticles({
         arr[i] = 1.0;
       } else {
         const matches = p.agency_codes.includes(activeAgency);
-        arr[i] = matches ? 1.0 : 0.0;
+        arr[i] = matches ? 1.0 : 0.1;
       }
     }
     return arr;
@@ -224,6 +224,11 @@ export default function GlobeParticles({
       const rect = canvas.getBoundingClientRect();
       const ndcX = ((e.clientX - rect.left) / size.width) * 2 - 1;
       const ndcY = -((e.clientY - rect.top) / size.height) * 2 + 1;
+      
+      // Fix massive default threshold to avoid picking on empty space
+      if (raycaster.params.Points) {
+        raycaster.params.Points.threshold = 0.015;
+      }
       
       raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
       const hits = raycaster.intersectObject(pointsRef.current);
