@@ -49,28 +49,31 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
   useEffect(() => {
     const fetchPool = async () => {
       const supabase = createClient();
-      let query = supabase
-        .from('stories')
-        .select('id, pull_quote, verification_tier')
-        .eq('moderation_status', 'APPROVED')
-        .order('created_at', { ascending: false })
-        .limit(100);
+      let fetchedData: any[] | null = null;
 
       if (activeAgency) {
-        query = supabase
+        const { data } = await supabase
           .from('stories')
           .select('id, pull_quote, verification_tier, story_analysis_tags!inner(agency_code)')
           .eq('moderation_status', 'APPROVED')
           .eq('story_analysis_tags.agency_code', activeAgency)
           .order('created_at', { ascending: false })
           .limit(100);
+        fetchedData = data;
+      } else {
+        const { data } = await supabase
+          .from('stories')
+          .select('id, pull_quote, verification_tier')
+          .eq('moderation_status', 'APPROVED')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        fetchedData = data;
       }
 
-      const { data } = await query;
-      if (data) {
+      if (fetchedData) {
         anchorPool.current = [];
         unverifiedPool.current = [];
-        data.forEach(d => {
+        fetchedData.forEach(d => {
           const item = { id: d.id, pull_quote: d.pull_quote || 'A story from Speak for the Dead.' };
           if (d.verification_tier === 'ANCHOR') {
             anchorPool.current.push(item);
