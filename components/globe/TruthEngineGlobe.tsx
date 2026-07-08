@@ -48,13 +48,17 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
   
   const pageOffset = useRef<number>(0);
   const isFetching = useRef<boolean>(false);
+  const hasMore = useRef<boolean>(true);
 
   const fetchPool = useCallback(async (isRefill = false) => {
     if (isFetching.current) return;
+    if (isRefill && !hasMore.current) return;
+    
     isFetching.current = true;
     
     if (!isRefill) {
       pageOffset.current = 0;
+      hasMore.current = true;
       anchorPool.current = [];
       unverifiedPool.current = [];
     }
@@ -92,6 +96,12 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
           unverifiedPool.current.push(item);
         }
       });
+      // If we got exactly 100, there might be more. If less, we're done.
+      if (fetchedData.length < 100) {
+        hasMore.current = false;
+      }
+    } else {
+      hasMore.current = false;
     }
     
     isFetching.current = false;
@@ -126,7 +136,7 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
     }
 
     // 4. Refill trigger
-    if (unverifiedPool.current.length < 15) {
+    if (unverifiedPool.current.length < 15 && hasMore.current) {
       fetchPool(true);
     }
   }, [fetchPool]);
@@ -134,20 +144,23 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
   return (
     <div style={wrapperStyle}>
       {/* ── HUD overlay ─────────────────────────────────────── */}
-      <GlobeControls
-        activeAgency={activeAgency}
-        onAgencyFilter={setActiveAgency}
-        fallenCount={fallenCount}
-        sparedCount={sparedCount}
-      />
+      <div style={{ position: 'relative', zIndex: 50, pointerEvents: 'none' }}>
+        <GlobeControls
+          activeAgency={activeAgency}
+          onAgencyFilter={setActiveAgency}
+          fallenCount={fallenCount}
+          sparedCount={sparedCount}
+        />
+      </div>
 
       {/* ── WebGL Canvas ─────────────────────────────────────── */}
-      <Canvas
-        camera={{ position: [0, 0, 3], fov: 60 }}
-        gl={{ antialias: true, alpha: true }}
-        style={{ background: 'transparent', width: '100%', height: '100%' }}
-        dpr={[1, 1.5]}
-      >
+      <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+        <Canvas
+          camera={{ position: [0, 0, 3], fov: 60 }}
+          gl={{ antialias: true, alpha: true }}
+          style={{ background: 'transparent', width: '100%', height: '100%' }}
+          dpr={[1, 1.5]}
+        >
         {/* Lighting */}
         <ambientLight intensity={0.4} />
         <pointLight position={[5, 5, 5]} intensity={1.2} color="#FF6B35" />
@@ -184,6 +197,7 @@ export default function TruthEngineGlobe({ particles }: TruthEngineGlobeProps) {
           />
         </EffectComposer>
       </Canvas>
+      </div>
 
       {/* ── Particle tooltip ──────────────────────────────────── */}
       {selectedParticle && (
