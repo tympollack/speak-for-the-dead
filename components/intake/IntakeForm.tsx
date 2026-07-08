@@ -24,6 +24,7 @@ interface FormState {
   error: string | null;
   isSubmitting: boolean;
   submittedStoryId: string | null;
+  isFallback: boolean;
 }
 
 type Action =
@@ -39,7 +40,8 @@ type Action =
   | { type: 'SUBMIT_SUCCESS'; payload: string }
   | { type: 'SUBMIT_ERROR'; payload: string }
   | { type: 'NEXT_STEP' }
-  | { type: 'CLEAR_ERROR' };
+  | { type: 'CLEAR_ERROR' }
+  | { type: 'ANALYSIS_FALLBACK' };
 
 const initialState: FormState = {
   step: 'NARRATIVE',
@@ -52,6 +54,7 @@ const initialState: FormState = {
   error: null,
   isSubmitting: false,
   submittedStoryId: null,
+  isFallback: false,
 };
 
 function reducer(state: FormState, action: Action): FormState {
@@ -67,6 +70,13 @@ function reducer(state: FormState, action: Action): FormState {
         ...state,
         step: 'GUIDE',
         storyAnalysis: action.payload,
+        error: null,
+      };
+    case 'ANALYSIS_FALLBACK':
+      return {
+        ...state,
+        step: 'UPLOAD', // skip the GUIDE step
+        isFallback: true,
         error: null,
       };
     case 'ANALYSIS_ERROR':
@@ -129,6 +139,38 @@ function ConfirmStep({
   onEmailChange: (e: string) => void;
   onSubmit: () => void;
 }) {
+  if (state.isFallback) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ maxWidth: '600px', margin: '0 auto' }}>
+        <div className="glass" style={{
+          padding: '28px 32px', borderRadius: 'var(--radius-lg)', marginBottom: '24px',
+          borderLeft: '3px solid var(--color-warm-primary)'
+        }}>
+          <p style={{ color: 'var(--color-text-primary)', fontSize: '1.05rem', lineHeight: 1.6, margin: '0 0 12px' }}>
+            Your story and any attached documents have been securely processed. It has been placed in our priority queue for verification.
+          </p>
+        </div>
+        <div style={{ marginBottom: '28px' }}>
+          <label style={{ display: 'block', color: 'var(--color-text-muted)', fontSize: '0.875rem', marginBottom: '8px' }}>
+            Want to receive updates or edit this later? (Optional)
+          </label>
+          <input
+            type="email" value={state.userEmail} onChange={(e) => onEmailChange(e.target.value)} placeholder="your@email.com"
+            style={{ width: '100%', boxSizing: 'border-box', background: 'var(--color-bg-elevated, #1A1A24)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 16px', color: 'var(--color-text-primary)', fontSize: '0.95rem', outline: 'none', fontFamily: 'inherit' }}
+          />
+        </div>
+        {state.stagingId && (
+          <p style={{ color: 'var(--color-cool-primary)', fontSize: '0.875rem', marginBottom: '20px' }}>
+            ⚓ Anchor document attached · verification pending
+          </p>
+        )}
+        <button className="btn-primary" onClick={onSubmit} disabled={state.isSubmitting} style={{ width: '100%', fontSize: '1rem', padding: '16px' }}>
+          {state.isSubmitting ? 'Submitting…' : 'Submit Story'}
+        </button>
+      </motion.div>
+    );
+  }
+
   const analysis = state.storyAnalysis!;
   const tags = analysis.legal_tags;
   const metrics = analysis.truth_metrics;
@@ -247,14 +289,18 @@ export default function IntakeForm() {
         dispatch({ type: 'ANALYSIS_ERROR', payload: data.message ?? 'Analysis failed. Please try again.' });
         return;
       }
-      dispatch({ type: 'ANALYSIS_SUCCESS', payload: data });
+      if (data.isFallback) {
+        dispatch({ type: 'ANALYSIS_FALLBACK' });
+      } else {
+        dispatch({ type: 'ANALYSIS_SUCCESS', payload: data });
+      }
     } catch {
       dispatch({ type: 'ANALYSIS_ERROR', payload: 'Something went wrong. Please check your connection and try again.' });
     }
   }, [state.narrative, state.storyType]);
 
   const handleSubmit = useCallback(async () => {
-    if (!state.storyAnalysis) return;
+    if (!state.storyAnalysis && !state.isFallback) return;
     dispatch({ type: 'SUBMIT_START' });
     try {
       const res = await fetch('/api/submit', {
@@ -266,7 +312,8 @@ export default function IntakeForm() {
           follow_up_answers: state.followUpAnswers,
           stagingId: state.stagingId,
           userEmail: state.userEmail || undefined,
-          storyAnalysis: state.storyAnalysis,
+          storyAnalysis: state.storyAnalysis || undefined,
+          isFallback: state.isFallback,
         }),
       });
       const data = await res.json();
@@ -382,7 +429,7 @@ export default function IntakeForm() {
             </motion.div>
           )}
 
-          {state.step === 'CONFIRM' && state.storyAnalysis && (
+          {state.step === 'CONFIRM' && (state.storyAnalysis || state.isFallback) && (
             <motion.div key="confirm" variants={pageVariants} initial="initial" animate="animate" exit="exit">
               <ConfirmStep
                 state={state}

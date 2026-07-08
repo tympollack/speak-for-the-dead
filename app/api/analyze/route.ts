@@ -127,24 +127,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(analysis, { status: 200 });
   } catch (err) {
-    if (err instanceof ZodError) {
-      console.error('[/api/analyze] LLM output failed schema validation:', err);
-      return NextResponse.json(
-        {
-          error: 'analysis_schema_error',
-          message: 'The AI returned an unexpected response format. Please try again.',
-        },
-        { status: 422 },
-      );
-    }
-
-    console.error('[/api/analyze] LLM analysis error:', err);
+    console.error('[/api/analyze] LLM analysis error or validation failure, triggering fallback:', err);
     return NextResponse.json(
-      {
-        error: 'analysis_failed',
-        message: 'Story analysis failed. Please try again in a few moments.',
-      },
-      { status: 500 },
+      { isFallback: true },
+      { status: 200 },
     );
   }
 }

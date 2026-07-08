@@ -4,23 +4,27 @@
  * LLM wrapper for the Truth Engine – single-pass structured analysis of a
  * user-submitted story.
  *
- * Uses `openai.beta.chat.completions.parse` with `zodResponseFormat` to
- * guarantee that the model's output strictly conforms to `StoryAnalysisSchema`.
- * Any response that fails Zod validation causes a descriptive error to be thrown.
+ * Uses `@google/genai` with `gemini-1.5-flash` to bypass strict safety filters
+ * for our sensitive regulatory-negligence narratives.
  */
 
-import OpenAI from 'openai';
-import { zodResponseFormat } from 'openai/helpers/zod';
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import {
   StoryAnalysisSchema,
   type StoryAnalysis,
 } from '@/lib/schemas/analysis.schema';
 
 // ---------------------------------------------------------------------------
-// OpenAI client (singleton)
+// Google GenAI client (singleton)
 // ---------------------------------------------------------------------------
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'dummy_key' });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'dummy_key' });
+
+// Convert Zod schema to OpenAPI JSON Schema for Gemini
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const jsonSchema = zodToJsonSchema(StoryAnalysisSchema as any, 'StoryAnalysis');
+const responseSchema = jsonSchema.definitions?.StoryAnalysis;
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -42,13 +46,6 @@ export interface AnalyzeInput {
 // System prompt builder
 // ---------------------------------------------------------------------------
 
-/**
- * Builds a compassionate, directive system prompt that instructs the LLM on
- * exactly how to populate `StoryAnalysisSchema`.
- *
- * Keeping this as a function (rather than a module-level constant) makes it
- * easy to unit-test and to vary tone/detail based on `story_type`.
- */
 function buildSystemPrompt(story_type: AnalyzeInput['story_type']): string {
   const outcomeGuidance =
     story_type === 'NEAR_MISS'
@@ -120,16 +117,14 @@ GENERAL PRINCIPLES
 // ---------------------------------------------------------------------------
 
 /**
- * Runs a single-pass structured analysis of a user story using GPT-4o with
- * structured outputs.
+ * Runs a single-pass structured analysis of a user story using Gemini 1.5 Flash.
  *
  * @throws {Error} when the API call fails or the response fails schema validation.
  */
 export async function analyzeStory(input: AnalyzeInput): Promise<StoryAnalysis> {
   const { narrative, story_type, follow_up_answers } = input;
 
-  // Build the user message — append follow-up answers if provided so the
-  // model treats them as supplementary context for the same story.
+  // Build the user message
   let userContent = `STORY:\n${narrative}`;
 
   if (follow_up_answers && Object.keys(follow_up_answers).length > 0) {
@@ -139,38 +134,34 @@ export async function analyzeStory(input: AnalyzeInput): Promise<StoryAnalysis> 
     userContent += `\n\nSUPPLEMENTARY INFORMATION (answers to follow-up questions):\n${answersBlock}`;
   }
 
-  // Call the structured-output endpoint. `zodResponseFormat` generates a JSON
-  // Schema from our Zod schema and constrains the model to produce conforming JSON.
-  // NOTE: In OpenAI SDK v6 this moved from openai.beta.chat → openai.chat.
-  const completion = await openai.chat.completions.parse({
-    model: 'gpt-4o-2024-08-06',
-    temperature: 0.2, // Low temperature for consistent, factual extraction
-    messages: [
-      { role: 'system', content: buildSystemPrompt(story_type) },
-      { role: 'user', content: userContent },
-    ],
-    response_format: zodResponseFormat(StoryAnalysisSchema, 'story_analysis'),
+  // Call the Gemini structured-output endpoint
+  const response = await ai.models.generateContent({
+    model: 'gemini-1.5-flash',
+    contents: userContent,
+    config: {
+      systemInstruction: buildSystemPrompt(story_type),
+      temperature: 0.2, // Low temperature for consistent, factual extraction
+      responseMimeType: 'application/json',
+      responseSchema: responseSchema as any,
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ],
+    },
   });
 
-  const message = completion.choices[0]?.message;
+  const text = response.text;
 
-  // `parsed` is populated by the SDK when the model returns valid JSON that
-  // matches the schema.  If parsing failed, `refusal` will be set instead.
-  if (message?.refusal) {
-    throw new Error(
-      `LLM refused to analyse this story: ${message.refusal}`,
-    );
+  if (!text) {
+    throw new Error('LLM returned an empty or unparseable response. Please try again.');
   }
 
-  if (!message?.parsed) {
-    throw new Error(
-      'LLM returned an empty or unparseable response.  Please try again.',
-    );
-  }
+  const parsed = JSON.parse(text);
 
-  // Run the Zod schema again as a defence-in-depth check (the SDK may parse
-  // partial objects in edge cases).
-  const validated = StoryAnalysisSchema.parse(message.parsed);
+  // Run the Zod schema again as a defence-in-depth check
+  const validated = StoryAnalysisSchema.parse(parsed);
 
   return validated;
 }

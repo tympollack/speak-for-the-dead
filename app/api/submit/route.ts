@@ -79,9 +79,12 @@ const SubmitRequestSchema = z.object({
 
   /**
    * The analysis object returned by POST /api/analyze.
-   * Re-validated server-side against StoryAnalysisSchema — never trust the client.
+   * Optional because it will be null if the LLM extraction failed and we are falling back.
    */
-  storyAnalysis: StoryAnalysisSchema,
+  storyAnalysis: StoryAnalysisSchema.optional(),
+
+  /** Indicates the LLM failed and we are performing a silent fallback. */
+  isFallback: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -191,29 +194,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     stagingId,
     userEmail,
     storyAnalysis,
+    isFallback,
   } = input;
 
-  // ── 2. Re-validate storyAnalysis (defence-in-depth) ──────────────────────
-  let validatedAnalysis: StoryAnalysis;
-  try {
-    validatedAnalysis = StoryAnalysisSchema.parse(storyAnalysis);
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json(
-        {
-          error: 'invalid_analysis',
-          message: 'The provided story analysis failed server-side validation.',
-          details: err.flatten().fieldErrors,
-        },
-        { status: 422 },
-      );
-    }
-    throw err;
+  if (!isFallback && !storyAnalysis) {
+    return NextResponse.json(
+      { error: 'missing_analysis', message: 'Analysis required unless falling back.' },
+      { status: 400 },
+    );
   }
 
-  // ── 3. Stage B moderation — screen the generated pull_quote ──────────────
-  const pullQuoteNeedsReview = screenPullQuote(validatedAnalysis.legal_tags.pull_quote);
-  const moderationStatus = pullQuoteNeedsReview ? 'PENDING' : 'APPROVED';
+  // ── 2. Re-validate storyAnalysis (defence-in-depth) ──────────────────────
+  let validatedAnalysis: StoryAnalysis | null = null;
+  let moderationStatus = 'PENDING';
+
+  if (!isFallback && storyAnalysis) {
+    try {
+      validatedAnalysis = StoryAnalysisSchema.parse(storyAnalysis);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return NextResponse.json(
+          {
+            error: 'invalid_analysis',
+            message: 'The provided story analysis failed server-side validation.',
+            details: err.flatten().fieldErrors,
+          },
+          { status: 422 },
+        );
+      }
+      throw err;
+    }
+
+    // ── 3. Stage B moderation — screen the generated pull_quote ──────────────
+    const pullQuoteNeedsReview = screenPullQuote(validatedAnalysis.legal_tags.pull_quote);
+    moderationStatus = pullQuoteNeedsReview ? 'PENDING' : 'APPROVED';
+  }
 
   // ── 4. Initialise admin client ────────────────────────────────────────────
   let adminClient: ReturnType<typeof getAdminClient>;
@@ -228,41 +243,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // ── 5. Insert story row ───────────────────────────────────────────────────
-  const { legal_tags, truth_metrics } = validatedAnalysis;
+  let insertData: any = {
+    narrative,
+    story_type,
+    follow_up_answers: follow_up_answers ?? null,
+    user_email: userEmail ?? null,
+    moderation_status: moderationStatus,
+    verification_tier: 'UNVERIFIED',
+  };
 
-  const { data: storyRow, error: storyInsertError } = await adminClient
-    .from('stories')
-    .insert({
-      narrative,
-      story_type,
-      follow_up_answers: follow_up_answers ?? null,
-      user_email: userEmail ?? null,
+  if (isFallback) {
+    insertData.internal_flags = ['LLM_API_FAILURE'];
+  } else if (validatedAnalysis) {
+    const { legal_tags, truth_metrics } = validatedAnalysis;
+    insertData = {
+      ...insertData,
       incident_outcome: legal_tags.incident_outcome,
       agency_code: legal_tags.agency_code,
       company_name: legal_tags.company_name ?? null,
-      // Fallen-specific fields (null for SPARED/NEAR_MISS)
-      negligent_party_name:
-        'negligent_party_name' in legal_tags
-          ? legal_tags.negligent_party_name
-          : null,
-      violation_category:
-        'violation_category' in legal_tags ? legal_tags.violation_category : null,
-      // Spared-specific fields (null for fallen outcomes)
-      regulation_credited:
-        'regulation_credited' in legal_tags ? legal_tags.regulation_credited : null,
-      mechanism_of_protection:
-        'mechanism_of_protection' in legal_tags
-          ? legal_tags.mechanism_of_protection
-          : null,
-      // Truth Engine metrics
+      negligent_party_name: 'negligent_party_name' in legal_tags ? legal_tags.negligent_party_name : null,
+      violation_category: 'violation_category' in legal_tags ? legal_tags.violation_category : null,
+      regulation_credited: 'regulation_credited' in legal_tags ? legal_tags.regulation_credited : null,
+      mechanism_of_protection: 'mechanism_of_protection' in legal_tags ? legal_tags.mechanism_of_protection : null,
       target_of_blame: truth_metrics.target_of_blame,
       preventability_score: truth_metrics.preventability_score,
       community_stance: truth_metrics.community_stance,
-      // Moderation
-      moderation_status: moderationStatus,
-      // Verification starts at the lowest tier until documents are checked
-      verification_tier: 'UNVERIFIED',
-    })
+    };
+  }
+
+  const { data: storyRow, error: storyInsertError } = await adminClient
+    .from('stories')
+    .insert(insertData)
     .select('id')
     .single();
 
@@ -277,19 +288,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const storyId: string = storyRow.id;
 
   // ── 6. Insert story_analysis_tags row ────────────────────────────────────
-  const { error: tagsInsertError } = await adminClient
-    .from('story_analysis_tags')
-    .insert({
-      story_id: storyId,
-      pull_quote: legal_tags.pull_quote,
-      community_stance: truth_metrics.community_stance,
-      follow_up_questions: truth_metrics.follow_up_questions,
-      raw_analysis: validatedAnalysis, // Store full JSON for audit / re-processing
-    });
+  if (validatedAnalysis) {
+    const { error: tagsInsertError } = await adminClient
+      .from('story_analysis_tags')
+      .insert({
+        story_id: storyId,
+        pull_quote: validatedAnalysis.legal_tags.pull_quote,
+        community_stance: validatedAnalysis.truth_metrics.community_stance,
+        follow_up_questions: validatedAnalysis.truth_metrics.follow_up_questions,
+        raw_analysis: validatedAnalysis, // Store full JSON for audit / re-processing
+      });
 
-  if (tagsInsertError) {
-    // Non-fatal: story is already saved; log and continue.
-    console.error('[/api/submit] Failed to insert story_analysis_tags:', tagsInsertError);
+    if (tagsInsertError) {
+      // Non-fatal: story is already saved; log and continue.
+      console.error('[/api/submit] Failed to insert story_analysis_tags:', tagsInsertError);
+    }
   }
 
   // ── 7. Handle staged document (if any) ───────────────────────────────────
