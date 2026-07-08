@@ -9,7 +9,7 @@ export default function ShareButton({ storyId }: ShareButtonProps) {
     const url = `${window.location.origin}/story/${storyId}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'A story from the Truth Engine', url });
+        await navigator.share({ title: 'A story from Speak for the Dead', url });
       } else {
         await navigator.clipboard.writeText(url);
         // Simple feedback — no toast library dependency

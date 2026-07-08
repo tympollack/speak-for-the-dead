@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: StoryPageProps): Promise<Meta
 
   return {
     title: 'A Story | Speak for the Dead',
-    description: data.pull_quote ?? 'A story from the Truth Engine.',
+    description: data.pull_quote ?? 'A story from Speak for the Dead.',
     openGraph: {
       description: data.pull_quote ?? undefined,
       type: 'article',
@@ -77,8 +77,11 @@ export default async function StoryPage({ params }: StoryPageProps) {
 
       {/* Nav */}
       <nav style={{ maxWidth: '760px', margin: '0 auto', padding: '24px 0' }}>
-        <Link href="/" style={{ color: 'rgba(255,255,255,0.4)', textDecoration: 'none', fontSize: '0.875rem', letterSpacing: '0.05em' }}>
-          ← Truth Engine
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.4)', textDecoration: 'none', fontSize: '0.875rem', letterSpacing: '0.05em' }}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M9 12L4 7l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Speak for the Dead
         </Link>
       </nav>
 

@@ -18,22 +18,22 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: 'Speak for the Dead | SunShade Truth Engine',
-  description:
-    'Crowdsourcing the human cost of regulatory failure. Share your story.',
+  title: 'Speak for the Dead | SunShade',
+  description: 'The human cost of regulatory failure, in real time.',
   openGraph: {
-    title: 'Speak for the Dead | SunShade Truth Engine',
-    description:
-      'Crowdsourcing the human cost of regulatory failure. Share your story.',
-    type: 'website',
+    title: 'Speak for the Dead | SunShade',
+    description: 'The human cost of regulatory failure, in real time.',
+    url: 'https://sunshade.icu',
+    siteName: 'Speak for the Dead',
+    images: [{ url: '/og-image.jpg', width: 1200, height: 630 }],
     locale: 'en_US',
-    siteName: 'SunShade Truth Engine',
+    type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Speak for the Dead | SunShade Truth Engine',
-    description:
-      'Crowdsourcing the human cost of regulatory failure. Share your story.',
+    title: 'Speak for the Dead | SunShade',
+    description: 'The human cost of regulatory failure, in real time.',
+    images: ['/og-image.jpg'],
   },
   themeColor: '#0A0A0F',
   colorScheme: 'dark',

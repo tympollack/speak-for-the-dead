@@ -4,7 +4,7 @@ import IntakeForm from '@/components/intake/IntakeForm';
 
 export const metadata: Metadata = {
   title: 'Share a Story | Speak for the Dead',
-  description: 'Add your story to the Truth Engine. Anonymous, respectful, and designed for those who grieve.',
+  description: 'Add your story to Speak for the Dead. Anonymous, respectful, and designed for those who grieve.',
 };
 
 export default function SubmitPage() {
@@ -42,7 +42,7 @@ export default function SubmitPage() {
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M9 12L4 7l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          Truth Engine
+          Speak for the Dead
         </Link>
       </nav>
 
